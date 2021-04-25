@@ -317,56 +317,74 @@ def template_gen(method, lowcut, highcut, samp_rate, filt_order,
             Logger.info("No data")
             continue
         if process:
+            starttime = min([tr.stats.starttime for tr in st])
+            endtime = starttime + process_len
+            st = pre_processing.shortproc(
+                st=st, lowcut=lowcut, highcut=highcut,
+                filt_order=filt_order, parallel=parallel,
+                samp_rate=samp_rate, num_cores=num_cores,
+                starttime=starttime, endtime=endtime, 
+                ignore_bad_data=skip_short_chans)
+            # Remove any empty traces associated with bad data
+            st = Stream([tr for tr in st if len(tr)])
             # data_len = max([len(tr.data) / tr.stats.sampling_rate
             #                 for tr in st])
             # if 80000 < data_len < 90000:
-            if process_len == 86400:
-                daylong = True
-                starttime = min([tr.stats.starttime for tr in st])
-                min_delta = min([tr.stats.delta for tr in st])
-                # Cope with the common starttime less than 1 sample before the
-                #  start of day.
-                if (starttime + min_delta).date > starttime.date:
-                    starttime = (starttime + min_delta)
-                # Check if this is stupid:
-                if abs(starttime - UTCDateTime(starttime.date)) > 600:
-                    daylong = False
-                starttime = starttime.date
-            else:
-                daylong = False
-                starttime = min([tr.stats.starttime for tr in st])
+            # if process_len == 86400:
+            #     daylong = True
+            #     starttime = min([tr.stats.starttime for tr in st])
+            #     min_delta = min([tr.stats.delta for tr in st])
+            #     # Cope with the common starttime less than 1 sample before the
+            #     #  start of day.
+            #     if (starttime + min_delta).date > starttime.date:
+            #         starttime = (starttime + min_delta)
+            #     # Check if this is stupid:
+            #     if abs(starttime - UTCDateTime(starttime.date)) > 600:
+            #         daylong = False
+            #     starttime = starttime.date
+            # else:
+            #     daylong = False
+            #     starttime = min([tr.stats.starttime for tr in st])
+            #     endtime = starttime + process_len
             # Check if the required amount of data have been downloaded - skip
             # channels if arg set.
-            for tr in st:
-                if np.ma.is_masked(tr.data):
-                    _len = np.ma.count(tr.data) * tr.stats.delta
-                else:
-                    _len = tr.stats.npts * tr.stats.delta
-                if _len < process_len * .8:
-                    Logger.info(
-                        "Data for {0} are too short, skipping".format(
-                            tr.id))
-                    if skip_short_chans:
-                        continue
-                # Trim to enforce process-len
-                tr.data = tr.data[0:int(process_len * tr.stats.sampling_rate)]
-            if len(st) == 0:
-                Logger.info("No data")
-                continue
-            if daylong:
-                st = pre_processing.dayproc(
-                    st=st, lowcut=lowcut, highcut=highcut,
-                    filt_order=filt_order, samp_rate=samp_rate,
-                    parallel=parallel, starttime=UTCDateTime(starttime),
-                    num_cores=num_cores)
-            else:
-                st = pre_processing.shortproc(
-                    st=st, lowcut=lowcut, highcut=highcut,
-                    filt_order=filt_order, parallel=parallel,
-                    samp_rate=samp_rate, num_cores=num_cores,
-                    starttime=starttime, endtime=starttime + process_len)
+            # _st = Stream()
+            # for tr in st:
+            #     if np.ma.is_masked(tr.data):
+            #         _len = np.ma.count(tr.data) * tr.stats.delta
+            #     else:
+            #         _len = tr.stats.npts * tr.stats.delta
+            #     if _len < process_len * .8:
+            #         if skip_short_chans:
+            #             Logger.info(
+            #                 "Data for {0} are too short, skipping".format(
+            #                     tr.id))
+            #             continue
+            #     # Trim to enforce process-len
+            #     tr.data = tr.data[0:int(process_len * tr.stats.sampling_rate)]
+            #     _st += tr
+            # st = _st
+            # if len(st) == 0:
+            #     Logger.info("No data")
+            #     continue
+            # if daylong:
+            #     st = pre_processing.dayproc(
+            #         st=st, lowcut=lowcut, highcut=highcut,
+            #         filt_order=filt_order, samp_rate=samp_rate,
+            #         parallel=parallel, starttime=UTCDateTime(starttime),
+            #         num_cores=num_cores)
+            # else:
+            #     st = pre_processing.shortproc(
+            #         st=st, lowcut=lowcut, highcut=highcut,
+            #         filt_order=filt_order, parallel=parallel,
+            #         samp_rate=samp_rate, num_cores=num_cores,
+            #         starttime=UTCDateTime(starttime), 
+            #         endtime=UTCDateTime(starttime) + process_len)
         data_start = min([tr.stats.starttime for tr in st])
         data_end = max([tr.stats.endtime for tr in st])
+        for tr in st:
+            assert abs(process_len - (
+                tr.stats.endtime - tr.stats.starttime)) < 1.0, f"{tr} is not the right length"
 
         for event in sub_catalog:
             stations, channels, st_stachans = ([], [], [])
