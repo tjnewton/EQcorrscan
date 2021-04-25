@@ -416,7 +416,7 @@ def dayproc(st, lowcut, highcut, filt_order, samp_rate, starttime,
 
 
 def process(tr, lowcut, highcut, filt_order, samp_rate,
-            starttime=False, clip=False, length=86400,
+            starttime=False, clip=False, length=None,
             seisan_chan_names=False, ignore_length=False, fill_gaps=True,
             ignore_bad_data=False, fft_threads=1):
     """
