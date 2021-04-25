@@ -523,7 +523,7 @@ class Template(object):
         return party[0]
 
     def construct(self, method, name, lowcut, highcut, samp_rate, filt_order,
-                  length, prepick, swin="all", process_len=86400,
+                  length, prepick, swin="all", process_len=None,
                   all_horiz=False, delayed=True, plot=False, plotdir=None,
                   min_snr=None, parallel=False, num_cores=False,
                   skip_short_chans=False, **kwargs):
