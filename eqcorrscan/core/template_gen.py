@@ -291,7 +291,10 @@ def template_gen(method, lowcut, highcut, samp_rate, filt_order,
         # Make an event object...
         catalog = Catalog([sactoevent(st)])
         sub_catalogs = [catalog]
-
+    else:
+        raise NotImplementedError(
+            f"Method ({method}) must be one of ('from_client', 'from_seishub',"
+            " 'from_meta_file', 'from_sac')")
     temp_list = []
     process_lengths = []
     catalog_out = Catalog()
@@ -314,9 +317,10 @@ def template_gen(method, lowcut, highcut, samp_rate, filt_order,
             Logger.info("No data")
             continue
         if process:
-            data_len = max([len(tr.data) / tr.stats.sampling_rate
-                            for tr in st])
-            if 80000 < data_len < 90000:
+            # data_len = max([len(tr.data) / tr.stats.sampling_rate
+            #                 for tr in st])
+            # if 80000 < data_len < 90000:
+            if process_len == 86400:
                 daylong = True
                 starttime = min([tr.stats.starttime for tr in st])
                 min_delta = min([tr.stats.delta for tr in st])
@@ -330,6 +334,7 @@ def template_gen(method, lowcut, highcut, samp_rate, filt_order,
                 starttime = starttime.date
             else:
                 daylong = False
+                starttime = min([tr.stats.starttime for tr in st])
             # Check if the required amount of data have been downloaded - skip
             # channels if arg set.
             for tr in st:
@@ -358,7 +363,8 @@ def template_gen(method, lowcut, highcut, samp_rate, filt_order,
                 st = pre_processing.shortproc(
                     st=st, lowcut=lowcut, highcut=highcut,
                     filt_order=filt_order, parallel=parallel,
-                    samp_rate=samp_rate, num_cores=num_cores)
+                    samp_rate=samp_rate, num_cores=num_cores,
+                    starttime=starttime, endtime=starttime + process_len)
         data_start = min([tr.stats.starttime for tr in st])
         data_end = max([tr.stats.endtime for tr in st])
 
