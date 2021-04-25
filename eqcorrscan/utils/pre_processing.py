@@ -58,7 +58,7 @@ def _check_daylong(tr):
 
 
 def shortproc(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
-              num_cores=False, starttime=None, endtime=None,
+              num_cores=False, starttime=None, endtime=None, process_len=None,
               seisan_chan_names=False, fill_gaps=True, ignore_length=False,
               ignore_bad_data=False, fft_threads=1):
     """
@@ -91,6 +91,10 @@ def shortproc(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
     :type endtime: obspy.core.utcdatetime.UTCDateTime
     :param endtime:
         Desired data end time, will trim to this before processing
+    :type process_len: float
+    :param process_len:
+        Length to process in seconds - if used with starttime and endtime,
+        process_len should equal endtime - starttime
     :type seisan_chan_names: bool
     :param seisan_chan_names:
         Whether channels are named like seisan channels (which are two letters
@@ -183,9 +187,14 @@ def shortproc(st, lowcut, highcut, filt_order, samp_rate, parallel=False,
     # Add sanity check for filter
     if highcut and highcut >= 0.5 * samp_rate:
         raise IOError('Highcut must be lower than the nyquist')
-    length = None
     clip = False
+    length = process_len
     if starttime is not None and endtime is not None:
+        if process_len:
+            length = endtime - starttime
+            if length != process_len:
+                Logger.warning(f"process_len ({process_len}) does not match "
+                               f"start and end times, using {length}")
         for tr in st:
             tr.trim(starttime, endtime)
             if len(tr.data) == ((endtime - starttime) *
@@ -471,12 +480,21 @@ def process(tr, lowcut, highcut, filt_order, samp_rate,
     if highcut and highcut >= 0.5 * samp_rate:
         raise IOError('Highcut must be lower than the nyquist')
 
+    # Make sure length is a sensible number in samples
+    fixed_length = round(samp_rate * length, 0) / samp_rate
+    if fixed_length != length:
+        Logger.warning(f"Length provided of {length}s does not given a whole "
+                       f"number of samples, using length of {fixed_length}s")
+        length = fixed_length
+
     # Define the start-time
     if starttime:
         # Be nice and allow a datetime object.
         if isinstance(starttime, dt.date) or isinstance(starttime,
                                                         dt.datetime):
             starttime = UTCDateTime(starttime)
+    else:
+        starttime = tr.stats.starttime
 
     Logger.debug('Working on: {0}'.format(tr.id))
     # Check if the trace is gappy and pad if it is.
@@ -508,7 +526,7 @@ def process(tr, lowcut, highcut, filt_order, samp_rate,
     padded = False
     if clip:
         tr = tr.trim(starttime, starttime + length, nearest_sample=True)
-    if float(tr.stats.npts / tr.stats.sampling_rate) != length and clip:
+    if float(tr.stats.npts / tr.stats.sampling_rate) != length:  # and clip:
         Logger.info(
             'Data for {0} are not long-enough, will zero pad'.format(
                 tr.id))

@@ -52,7 +52,7 @@ class TemplateGenError(Exception):
 
 
 def template_gen(method, lowcut, highcut, samp_rate, filt_order,
-                 length, prepick, swin="all", process_len=86400,
+                 length, prepick, swin="all", process_len=None,
                  all_horiz=False, delayed=True, plot=False, plotdir=None,
                  return_event=False, min_snr=None, parallel=False,
                  num_cores=False, save_progress=False, skip_short_chans=False,
@@ -243,7 +243,11 @@ def template_gen(method, lowcut, highcut, samp_rate, filt_order,
     if not isinstance(swin, list):
         swin = [swin]
     process = True
+
     if method in ['from_client', 'from_seishub']:
+        if process_len is None:
+            process_len = 86400.0
+            Logger.info(f"Defaulting to process_len of {process_len}")
         catalog = kwargs.get('catalog', Catalog())
         data_pad = kwargs.get('data_pad', 90)
         # Group catalog into days and only download the data once per day
@@ -265,36 +269,41 @@ def template_gen(method, lowcut, highcut, samp_rate, filt_order,
         else:
             client = SeisHubClient(kwargs.get('url', None), timeout=10)
             available_stations = client.waveform.get_station_ids()
-    elif method == 'from_meta_file':
-        if isinstance(kwargs.get('meta_file'), Catalog):
-            catalog = kwargs.get('meta_file')
-        elif kwargs.get('meta_file'):
-            catalog = read_events(kwargs.get('meta_file'))
-        else:
-            catalog = kwargs.get('catalog')
-        sub_catalogs = [catalog]
-        st = kwargs.get('st', Stream())
-        process = kwargs.get('process', True)
-    elif method == 'from_sac':
-        sac_files = kwargs.get('sac_files')
-        if isinstance(sac_files, list):
-            if isinstance(sac_files[0], (Stream, Trace)):
-                # This is a list of streams...
-                st = Stream(sac_files[0])
-                for sac_file in sac_files[1:]:
-                    st += sac_file
-            else:
-                sac_files = [read(sac_file)[0] for sac_file in sac_files]
-                st = Stream(sac_files)
-        else:
-            st = sac_files
-        # Make an event object...
-        catalog = Catalog([sactoevent(st)])
-        sub_catalogs = [catalog]
     else:
-        raise NotImplementedError(
-            f"Method ({method}) must be one of ('from_client', 'from_seishub',"
-            " 'from_meta_file', 'from_sac')")
+        if method == 'from_meta_file':
+            if isinstance(kwargs.get('meta_file'), Catalog):
+                catalog = kwargs.get('meta_file')
+            elif kwargs.get('meta_file'):
+                catalog = read_events(kwargs.get('meta_file'))
+            else:
+                catalog = kwargs.get('catalog')
+            sub_catalogs = [catalog]
+            st = kwargs.get('st', Stream())
+            process = kwargs.get('process', True)
+        elif method == 'from_sac':
+            sac_files = kwargs.get('sac_files')
+            if isinstance(sac_files, list):
+                if isinstance(sac_files[0], (Stream, Trace)):
+                    # This is a list of streams...
+                    st = Stream(sac_files[0])
+                    for sac_file in sac_files[1:]:
+                        st += sac_file
+                else:
+                    sac_files = [read(sac_file)[0] for sac_file in sac_files]
+                    st = Stream(sac_files)
+            else:
+                st = sac_files
+            # Make an event object...
+            catalog = Catalog([sactoevent(st)])
+            sub_catalogs = [catalog]
+        else:
+            raise NotImplementedError(
+                f"Method ({method}) must be one of ('from_client', "
+                "'from_seishub', 'from_meta_file', 'from_sac')")
+        if process_len is None:
+            process_len = max([tr.stats.endtime - tr.stats.starttime
+                               for tr in st])
+            Logger.info(f"Setting process_len to {process_len}")
     temp_list = []
     process_lengths = []
     catalog_out = Catalog()
@@ -317,13 +326,17 @@ def template_gen(method, lowcut, highcut, samp_rate, filt_order,
             Logger.info("No data")
             continue
         if process:
-            starttime = min([tr.stats.starttime for tr in st])
-            endtime = starttime + process_len
+            if process_len == 86400:
+                starttime = min([tr.stats.starttime for tr in st])
+                endtime = starttime + process_len
+            else:
+                starttime, endtime = None, None
             st = pre_processing.shortproc(
                 st=st, lowcut=lowcut, highcut=highcut,
                 filt_order=filt_order, parallel=parallel,
                 samp_rate=samp_rate, num_cores=num_cores,
-                starttime=starttime, endtime=endtime, 
+                starttime=starttime, endtime=endtime,
+                process_len=process_len,
                 ignore_bad_data=skip_short_chans)
             # Remove any empty traces associated with bad data
             st = Stream([tr for tr in st if len(tr)])
@@ -341,13 +354,12 @@ def template_gen(method, lowcut, highcut, samp_rate, filt_order,
             #     # Check if this is stupid:
             #     if abs(starttime - UTCDateTime(starttime.date)) > 600:
             #         daylong = False
-            #     starttime = starttime.date
+            #     else:
+            #         starttime = starttime.date
             # else:
             #     daylong = False
-            #     starttime = min([tr.stats.starttime for tr in st])
-            #     endtime = starttime + process_len
-            # Check if the required amount of data have been downloaded - skip
-            # channels if arg set.
+            # # Check if the required amount of data have been downloaded - skip
+            # # channels if arg set.
             # _st = Stream()
             # for tr in st:
             #     if np.ma.is_masked(tr.data):
@@ -378,8 +390,7 @@ def template_gen(method, lowcut, highcut, samp_rate, filt_order,
             #         st=st, lowcut=lowcut, highcut=highcut,
             #         filt_order=filt_order, parallel=parallel,
             #         samp_rate=samp_rate, num_cores=num_cores,
-            #         starttime=UTCDateTime(starttime), 
-            #         endtime=UTCDateTime(starttime) + process_len)
+            #         process_len=process_len)
         data_start = min([tr.stats.starttime for tr in st])
         data_end = max([tr.stats.endtime for tr in st])
         for tr in st:
@@ -505,9 +516,13 @@ def extract_from_stack(stack, template, length, pre_pick, pre_pad,
 
     #  Process the data if necessary
     if not pre_processed:
+        process_len = max([tr.stats.endtime - tr.stats.starttime
+                           for tr in new_template])
+        Logger.info(f"Setting process_len to {process_len}")
         new_template = pre_processing.shortproc(
             st=new_template, lowcut=lowcut, highcut=highcut,
-            filt_order=filt_order, samp_rate=samp_rate)
+            filt_order=filt_order, samp_rate=samp_rate,
+            process_len=process_len)
     # Loop through the stack and trim!
     out = Stream()
     for tr in new_template:
