@@ -360,7 +360,7 @@ def setup_package():
     try:
         import numpy
     except ImportError:
-        build_requires = ['numpy>=1.6, <2.0']
+        build_requires = ['numpy>=1.6']
 
     if not READ_THE_DOCS:
         install_requires = ['matplotlib>=1.3.0', 'scipy>=0.18',
@@ -387,6 +387,7 @@ def setup_package():
             'License (LGPL)',
             'Programming Language :: Python :: 3.6',
             'Programming Language :: Python :: 3.7',
+            'Programming Language :: Python :: 3.8',
         ],
         'keywords': 'earthquake correlation detection match-filter',
         'scripts': scriptfiles,
@@ -415,8 +416,9 @@ def setup_package():
     else:
         setup_args['packages'] = [
             'eqcorrscan', 'eqcorrscan.utils', 'eqcorrscan.core',
-            'eqcorrscan.core.match_filter', 'eqcorrscan.utils.lib',
-            'eqcorrscan.tutorials', 'eqcorrscan.helpers', 'eqcorrscan.tests']
+            'eqcorrscan.core.match_filter', 'eqcorrscan.core.event',
+            'eqcorrscan.utils.lib', 'eqcorrscan.tutorials',
+            'eqcorrscan.helpers', 'eqcorrscan.tests']
         setup_args['ext_modules'] = get_extensions(no_mkl=no_mkl)
         setup_args['package_data'] = get_package_data()
         setup_args['package_dir'] = get_package_dir()
